@@ -141,14 +141,6 @@ void freelist(struct list *l){
     }
 }
  
-void printtree(struct tree *head){
-    if(head){
-        printtree(head->left);
-        printf("%s %d\n", head->arr, head->num);
-        printtree(head->right);
-    }
-}
- 
 int main(int argc, char *argv[]) {
     int c;
     FILE *fin;
