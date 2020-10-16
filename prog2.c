@@ -175,15 +175,21 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[i], "-o") == 0) fout = fopen(argv[i+1],"w");
         if (strcmp(argv[i], "-i") == 0) fin = fopen(argv[i+1],"r");
     }
-    struct tree *h = NULL;
-    getwords(fin, &h);
-    struct list *finlist = NULL;
-    createlist(h, &finlist);
-    printlist(finlist, fout);
-    freetree(h);
-    freelist(finlist);
-    fclose(fin);
-    fclose(fout);
+    if (fout != NULL && fin != NULL){
+        struct tree *h = NULL;
+        getwords(fin, &h);
+        struct list *finlist = NULL;
+        createlist(h, &finlist);
+        printlist(finlist, fout);
+        freetree(h);
+        freelist(finlist);
+        fclose(fin);
+        fclose(fout);
+    }
+    else {
+        fprintf(stderr, "File doesn't exist!\n");
+        exit(1);
+    }
     return 0;
 }
 
