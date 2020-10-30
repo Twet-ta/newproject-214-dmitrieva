@@ -91,9 +91,9 @@ int main (int argc, char *argv[])
     }
     ch16 = read16(fin, &offset, &flag);
     if (ch16 == 0xFFFE) {
-        bom = 0;
-    } else if (ch16 == 0xFEFF) {
         bom = 1;
+    } else if (ch16 == 0xFEFF) {
+        bom = 0;
     } else {
         bom = 1;
         if (flag) {
