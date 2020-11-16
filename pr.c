@@ -68,7 +68,6 @@ int enter_text (char **elems, int *count, int *buf){
     free(word);
     if (fq == 1){
         perror("Problem with quotes");
-        //freearr(elems, *count);
     }
     return 0;
 }
@@ -98,15 +97,6 @@ void cdr(char **cdr, int count){
         fprintf(stderr, "Error with args");
     }
 }
-
-
-/* 1. eixt +
- * 2. EOF +
- * 3. "" +
- * 4. process + args
- * 5. cd
- *
- * */
 
 int main(){
     int count = 0, buf = maxel;
