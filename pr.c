@@ -273,61 +273,39 @@ void conv(int const count, CMD const *cmd, int const it) {
         fflush(stdout);
         _exit(0);
     }
-    int old_in, old_out, old_in2;
+    int old_in, old_out;
     old_out = dup(1);
     old_in = dup(0);
-    int i = 0, pid, fd[2];
+    int i = 0, fd[2];
     while(i < it) {
         pipe(fd);
-        switch ((pid = fork())) {
-            case -1:
-                _exit(-1);
-            case 0: // child
-                if ((i + 1 != it)) { // если это не последний - перенаправляем его вывод
-                    if (cmd[i].fd_out == 1) { //close your out
-                        dup2(fd[1], 1);
-                    }
-                    else {
-                        dup2(cmd[i].fd_out, 1);
-                        close(cmd[i].fd_out);
-                    }
-                    if (cmd[i].fd_in != 0) {
-                        dup2(cmd[i].fd_in, 0);
-                        close(cmd[i].fd_in);
-                    }
-                } else { // последний
-                    if (cmd[i].fd_out != 1) {
-                        dup2(cmd[i].fd_out, 1);
-                        close(cmd[i].fd_out);
-                    }
-                    if (cmd[i].fd_in != 0) {
-                        dup2(cmd[i].fd_in, 0);
-                        close(cmd[i].fd_in);
-                    }
+        if (!fork()) {
+            if (i + 1 != it) { // не последний элемент
+                if (cmd[i].fd_out == 1) { // стандартный вывод
+                    dup2(fd[1], 1);
                 }
-                close(fd[1]);
-                close(fd[0]);
-                if (strcmp(cmd[i].argv[0], "cd") == 0) {
-                    int tmp_argv = 0;
-                    while(cmd[i].argv[tmp_argv] != NULL) {tmp_argv++;}
-                    cdr(cmd[i].argv, tmp_argv);
-                } else {
-                    execvp(cmd[i].argv[0], cmd[i].argv);
-                }
-                _exit(1);
+            }
+            if (cmd[i].fd_out != 1) { // для любого элемента можем перенаправить вывод
+                dup2(cmd[i].fd_out, 1);
+                close(cmd[i].fd_out);
+            }
+            if (cmd[i].fd_in != 0) { // для любого элемента можем перенаправить ввод
+                dup2(cmd[i].fd_in, 0);
+                close(cmd[i].fd_in);
+            }
+            close(fd[0]); close(fd[1]);
+            execvp(cmd[i].argv[0], cmd[i].argv);
+            _exit(1);
         }
-        if (cmd[i].fd_in == 0) { // тут уже точно не первый - перенаправляем ввод
-            dup2(fd[0], 0);
-        }
+        dup2(fd[0], 0);
         close(fd[1]);
-        close(fd[0]);
         i++;
-        while(wait(NULL) != -1) {}
     }
+    while (wait(NULL) != -1) {}
     dup2(old_in, 0);
     dup2(old_out, 1);
-    close(old_out);
     close(old_in);
+    close(old_out);
 }
 
 int main() {
