@@ -296,6 +296,7 @@ void conv(int const count, CMD const *cmd, int const it) {
             close(fd[0]); close(fd[1]);
             execvp(cmd[i].argv[0], cmd[i].argv);
             _exit(1);
+            _exit(1);
         }
         dup2(fd[0], 0);
         close(fd[1]);
@@ -330,13 +331,12 @@ int main() {
         if (mainels[0] && mainels != NULL) { //cdir check!
             if (strncmp(cdir, mainels[0], strlen(cdir)) == 0){
                 cdr(mainels, count);
+            } else {
+                int it = 0; // struct array counter
+                CMD *commands = get_commands(mainels, count, &it);
+                conv(count, commands, it);
+                freecmd(commands, it);
             }
-        }
-        {
-            int it = 0; // struct array counter
-            CMD *commands = get_commands(mainels, count, &it);
-            conv(count, commands, it);
-            freecmd(commands, it);
         }
         if (mainels != NULL) freearr(mainels, count);
         count = 0;
