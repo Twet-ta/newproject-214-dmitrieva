@@ -93,7 +93,7 @@ int enter_text (char **mainels, int *count, int *buf)
         if (c == '\"') {
             fq = !fq;
         }
-        if ((flag == 0) && (*count == 0)){ //EOF in start
+        if ((flag == 0) && (*count == 0)) { //EOF in start
             free(word);
             return 1;
         }
@@ -120,33 +120,37 @@ int enter_text (char **mainels, int *count, int *buf)
                 switch(c) {
                     case '>':
                         if (prc == '>') {
-                            word[0] = '>';
+                            word[0] = '\\';
                             word[1] = '>';
-                            word[2] = '\0';
-                            len = 2;
+                            word[2] = '>';
+                            word[3] = '\0';
+                            len = 3;
                             deleteword(mainels, count);
                             addword(len, word, mainels, count, buf);
                             len = 0;
                         }
                         else{
-                            *word = '>';
-                            word[1] = '\0';
-                            len = 1;
+                            word[0] = '\\';
+                            word[1] = '>';
+                            word[2] = '\0';
+                            len = 2;
                             addword(len, word, mainels, count, buf);
                             len = 0;
                         }
                         break;
                     case '<':
-                        *word = '<';
-                        word[1] = '\0';
-                        len = 1;
+                        word[0] = '\\';
+                        word[1] = '<';
+                        word[2] = '\0';
+                        len = 2;
                         addword(len, word, mainels, count, buf);
                         len = 0;
                         break;
                     case '|':
-                        *word = '|';
-                        word[1] = '\0';
-                        len = 1;
+                        word[0] = '\\';
+                        word[1] = '|';
+                        word[2] = '\0';
+                        len = 2;
                         addword(len, word, mainels, count, buf);
                         len = 0;
                         break;
@@ -239,21 +243,21 @@ CMD *get_commands(char **mainels, const int count, int *it) {
     commands[*it].fd_out = 1;
     int argv_counter = 0;
     for (int i = 0; i < count; ++i) {
-        if (strcmp("|", mainels[i]) == 0) {
+        if (strcmp("\\|", mainels[i]) == 0) {
             (*it)++;
             argv_counter = 0;
             commands[*it].argv = (char **) calloc(count + 1, sizeof(char *));
             commands[*it].fd_in = 0;
             commands[*it].fd_out = 1;
-        } else if (strcmp(">", mainels[i]) == 0) {
+        } else if (strcmp("\\>", mainels[i]) == 0) {
             int fd = open(mainels[i + 1], O_CREAT | O_TRUNC | O_WRONLY, 0660);
             commands[*it].fd_out = fd;
             i++;
-        } else if (strcmp(">>", mainels[i]) == 0) {
+        } else if (strcmp("\\>>", mainels[i]) == 0) {
             int fd = open(mainels[i + 1], O_CREAT | O_APPEND | O_WRONLY, 0660);
             commands[*it].fd_out = fd;
             i++;
-        } else if (strcmp("<", mainels[i]) == 0) {
+        } else if (strcmp("\\<", mainels[i]) == 0) {
             int fd = open(mainels[i + 1], O_CREAT | O_APPEND | O_RDONLY);
             commands[*it].fd_in = fd;
             i++;
@@ -295,7 +299,6 @@ void conv(int const count, CMD const *cmd, int const it) {
             }
             close(fd[0]); close(fd[1]);
             execvp(cmd[i].argv[0], cmd[i].argv);
-            _exit(1);
             _exit(1);
         }
         dup2(fd[0], 0);
