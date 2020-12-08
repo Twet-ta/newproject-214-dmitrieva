@@ -40,10 +40,10 @@ void freecmd(CMD *commands, int it)
     free(commands);
 }
 
-void printarr(char **arr, int count)
+void printarr(int *arr, int count)
 {
     for (int i = 0; i < count; i++) {
-        printf("%s\n",arr[i]);
+        printf("%d\n",arr[i]);
     }
 }
 
@@ -277,11 +277,6 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
     if (i + 1 == it) {
         *pid = fork();
         if (!(*pid)) {
-                if (i + 1 != it) { // не последний элемент
-                    if (cmd[i].fd_out == 1) { // стандартный вывод
-                        dup2(fd[1], 1);
-                    }
-                }
                 if (cmd[i].fd_out != 1) { // для любого элемента можем перенаправить вывод
                     dup2(cmd[i].fd_out, 1);
                     close(cmd[i].fd_out);
@@ -290,7 +285,7 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
                     dup2(cmd[i].fd_in, 0);
                     close(cmd[i].fd_in);
                 }
-                close(fd[0]); close(fd[1]);
+                //close(fd[0]); close(fd[1]);
                 if (is_fon) {
                     signal(SIGINT, SIG_IGN);
                 }
@@ -322,7 +317,7 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
                     }
                     close(fd[0]); close(fd[1]);
                     execvp(cmd[i].argv[0], cmd[i].argv);
-                    _exit(1);
+                    _exit(0);
                 }
                 dup2(fd[0], 0);
                 close(fd[1]);
@@ -334,7 +329,6 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
     }
     if (!is_fon) { // Это не фоновый процесс
         while (waitpid(*pid, NULL, 0) > 0) {
-            flag_kill = 0;
             usleep(1000);
             if (flag_kill == 1) {
                 flag_kill = 0;
@@ -348,7 +342,7 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
 
 int main() {
     write(1, "Hello!\n", 7);
-    int pid, status, pid_i = 1, count = 0, buf = MAXEL, flag = 0, buf_pid = 1, count_pid = 0;
+    int pid, status, pid_i = 1, count = 0, buf = MAXEL, flag = 0, buf_pid = MAXEL, count_pid = 0;
     int *arr_pid = calloc(buf_pid,  sizeof(int));
     const char *exits = "exit\0";
     const char *cdir = "cd\0";
@@ -357,7 +351,7 @@ int main() {
         flag_kill = 0;
         // Первым делом проверяем завершившиеся процессы
         if (count_pid > 0) {
-            while (waitpid(-1, &status, WNOHANG) > 0) {
+            while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
                 if (WIFEXITED(status)) {
                     printf("[%d] completed, status = %d\n", pid, WEXITSTATUS(status));
                 }
