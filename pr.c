@@ -274,14 +274,9 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
         _exit(0);
     }
     int i = 0, fd[2];
-    *pid = fork();
-    if (!(*pid)) { //father
-        if (is_fon) {
-            signal(SIGINT, SIG_IGN);
-        }
-        while(i < it) {
-            pipe(fd);
-            if (!fork()) {
+    if (i + 1 == it) {
+        *pid = fork();
+        if (!(*pid)) {
                 if (i + 1 != it) { // не последний элемент
                     if (cmd[i].fd_out == 1) { // стандартный вывод
                         dup2(fd[1], 1);
@@ -296,15 +291,46 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
                     close(cmd[i].fd_in);
                 }
                 close(fd[0]); close(fd[1]);
+                if (is_fon) {
+                    signal(SIGINT, SIG_IGN);
+                }
                 execvp(cmd[i].argv[0], cmd[i].argv);
                 _exit(1);
             }
-            dup2(fd[0], 0);
-            close(fd[1]);
-            i++;
+    }
+    else {
+        *pid = fork();
+        if (!(*pid)) { //father
+            if (is_fon) {
+                signal(SIGINT, SIG_IGN);
+            }
+            while(i < it) {
+                pipe(fd);
+                if (!fork()) {
+                    if (i + 1 != it) { // не последний элемент
+                        if (cmd[i].fd_out == 1) { // стандартный вывод
+                            dup2(fd[1], 1);
+                        }
+                    }
+                    if (cmd[i].fd_out != 1) { // для любого элемента можем перенаправить вывод
+                        dup2(cmd[i].fd_out, 1);
+                        close(cmd[i].fd_out);
+                    }
+                    if (cmd[i].fd_in != 0) { // для любого элемента можем перенаправить ввод
+                        dup2(cmd[i].fd_in, 0);
+                        close(cmd[i].fd_in);
+                    }
+                    close(fd[0]); close(fd[1]);
+                    execvp(cmd[i].argv[0], cmd[i].argv);
+                    _exit(1);
+                }
+                dup2(fd[0], 0);
+                close(fd[1]);
+                i++;
+            }
+            while (wait(NULL) != -1) {} // В ребенке ждем завершения всех внуков
+            _exit(0);
         }
-        while (wait(NULL) != -1) {} // В ребенке ждем завершения всех внуков
-        _exit(0);
     }
     if (!is_fon) { // Это не фоновый процесс
         while (waitpid(*pid, NULL, 0) > 0) {
