@@ -8,6 +8,7 @@
 int
 main(int argc, char *argv[])
 {
+    if (argc != 2) return 0;
     int fd1 = open(argv[1], O_RDWR);
     int fd2 = open(argv[1], O_RDWR);
 
