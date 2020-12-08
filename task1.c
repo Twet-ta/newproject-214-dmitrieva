@@ -7,24 +7,63 @@
 #include <fcntl.h>
 #include <signal.h>
 
+int conv (const char *str, int fd_in, int fd_out)
+{
+    int pid = fork();
+    if (fd_in != 0) {
+        dup2(fd_in, 0);
+        close(fd_in);
+    }
+    if (fd_out != 1) {
+        dup2(fd_out, 1);
+        close(fd_out);
+    }
+    if (pid == 0) {
+        execlp(str, str, NULL);
+        _exit(1);
+    } 
+    else if (pid > 0) {
+        int status;
+        wait(&status);
+        if (!WIFEXITED(status)) {
+            return 1;
+        } 
+        else if (WEXITSTATUS(status) != 0) {
+            return 1;
+        } 
+        else {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int main(int argc,char *argv[]){
     if (argc == 5){
-         int fo = 0, fd[2], status;
-         fo = open(argv[4], O_CREAT | O_APPEND | O_RDONLY);
-         pipe(fd);
-         pid = fork();
-         if(!pid){ //child
-             dup2();
-             _exit(0);
-         }
-         else{
-             waitpid(pid, &status, 0);
-             if (WIFEXITED(status)){
-             }
-         }
-         
+        int fo = 0, fd[2], status, pid;
+        int old_stdin, old_stdout;
+        old_stdout = dup(1);
+        old_stdin = dup(0);
+        fo = open(argv[4], O_RDONLY);
+        pipe(fd);
+        pid = fork();
+        if(!pid){ //child
+            if (!conv(argv[1], fo, fd[1])) {
+                conv(argv[2], fo, fd[1]);
+            }
+        } 
+        else 
+        {
+            wait(NULL);
+        }
+        pid = fork();
+        if (!pid) { // pr3
+            conv(argv[3], fd[0], old_stdout);
+        }
     }
-    else{
-        fprintf(stderr, "Error");
-    }
+    else fprintf(stderr, "Error");
+    return 0;
 }
+
+
+
