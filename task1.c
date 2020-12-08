@@ -48,22 +48,23 @@ int main(int argc,char *argv[]){
     pid = fork();
     pipe(fd);
     if(!pid){ //child
+        close(fd[0]);
         if (!conv(argv[1], fo, fd[1])) {
             conv(argv[2], fo, fd[1]);
         }
     } 
-    else 
-    {
-        wait(NULL);
-    }
     pid = fork();
     if (!pid) { // pr3
+    close(fd[1]);
         conv(argv[3], fd[0], old_stdout);
     }
+        close(fd[0]);
+    close(fd[1]);
+    wait(NULL);
+    wait(NULL);
     close(old_stdin);
     close(old_stdout);
     return 0;
 }
-
 
 
