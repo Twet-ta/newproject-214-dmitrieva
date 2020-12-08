@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #define MAXEL 100
 
@@ -12,7 +13,15 @@ typedef struct cmd {
     char **argv;
     int fd_in;
     int fd_out;
+    int f;
 } CMD;
+
+int flag_kill = 0;
+
+void handler(int sig) {
+    flag_kill = 1;
+    signal(SIGINT, handler);
+}
 
 void freearr(char **arr, int count)
 {
@@ -46,6 +55,7 @@ void printcmd(CMD cmd) {
     }
     printf("out:%d ", cmd.fd_out);
     printf("in:%d\n", cmd.fd_in);
+    printf("f:%d\n", cmd.f);
     fflush(stdout);
 }
 
@@ -58,8 +68,23 @@ int is_special(const char c)
             return 1;
         case '|':
             return 1;
+        case '&':
+            return 1;
         default:
             return 0;
+    }
+}
+
+void add_pid(int pid, int *arr_pid, int *buf_pid, int *count_pid){
+    if (*count_pid == *buf_pid){
+        *buf_pid *= 2;
+        arr_pid = realloc (arr_pid, (*buf_pid) * (sizeof(int)));
+        arr_pid[*count_pid] = pid;
+        (*count_pid)++;
+    }
+    else {
+        arr_pid[*count_pid] = pid;
+        (*count_pid)++;
     }
 }
 
@@ -146,6 +171,14 @@ int enter_text (char **mainels, int *count, int *buf)
                         addword(len, word, mainels, count, buf);
                         len = 0;
                         break;
+                    case '&':
+                        word[0] = '\\';
+                        word[1] = '&';
+                        word[2] = '\0';
+                        len = 2;
+                        addword(len, word, mainels, count, buf);
+                        len = 0;
+                        break;
                     case '|':
                         word[0] = '\\';
                         word[1] = '|';
@@ -168,63 +201,6 @@ int enter_text (char **mainels, int *count, int *buf)
     return 0;
 }
 
-void exl(char **str){
-    int status, i, f = 1, fd1 = 0, fd2 = 0;
-    ///place for change enter
-    for (i = 0; str[i] != NULL; i++){
-        if (str[i][0] == '>'){
-            if (str[i][1] == '>'){
-                free(str[i]);
-                str[i] = NULL;
-                fd1 = open(str[i+1], O_WRONLY | O_APPEND, 0666);
-                free(str[i+1]);
-                str[i+1] = NULL;
-            }
-            else{
-                free(str[i]);
-                str[i] = NULL;
-                fd1 = open(str[i+1], O_WRONLY | O_TRUNC | O_CREAT, 0666);
-                free(str[i+1]);
-                str[i+1] = NULL;
-            }
-        }
-        if (str[i][0] == '<'){
-            free(str[i]);
-            str[i] = NULL;
-            fd2 = open(str[i+1], O_RDONLY, 0666);
-            free(str[i+1]);
-            str[i+1] = NULL;
-        }
-        if (fd1 || fd2){
-            if(str[i]) free(str[i]);
-        }
-    }
-    if (fd1 == -1 || fd2 == -1){
-        perror("Error with files");
-        exit(1);
-    }
-    ///end of place
-    if (fd1){
-        dup2(fd1, 0);
-        close(fd1);
-    }
-    if (fd2){
-        dup2(fd2, 1);
-        close(fd2);
-    }
-    int pid = fork();
-    if(!pid){
-        execvp(str[0], str);
-        _exit(1);
-    }
-    else {
-        waitpid(pid, &status, 0);
-        if(!WIFEXITED(status)) {
-            perror("Child crushed");
-        }
-    }
-}
-
 void cdr(char **cdr, int count){
     if (count == 2){
         chdir(cdr[1]);
@@ -236,11 +212,27 @@ void cdr(char **cdr, int count){
     }
 }
 
+void check_err_fon(int const count, CMD const *cmd, int const it, int *flag) {
+    int i = 0;
+    while (i < it){
+        if (i + 1 != it) {
+            if (cmd[i].f == 1) { //error with &
+                *flag = 2;
+                break;
+            }
+        } else {
+            if (cmd[i].f == 1) *flag = 1; //flag fon
+        }
+        ++i;
+    }
+}
+
 CMD *get_commands(char **mainels, const int count, int *it) {
     CMD *commands = calloc(count + 1, sizeof(CMD));
     commands[*it].argv = (char **) calloc(count + 1, sizeof(char *));
     commands[*it].fd_in = 0;
     commands[*it].fd_out = 1;
+    commands[*it].f = 0;
     int argv_counter = 0;
     for (int i = 0; i < count; ++i) {
         if (strcmp("\\|", mainels[i]) == 0) {
@@ -249,6 +241,7 @@ CMD *get_commands(char **mainels, const int count, int *it) {
             commands[*it].argv = (char **) calloc(count + 1, sizeof(char *));
             commands[*it].fd_in = 0;
             commands[*it].fd_out = 1;
+            commands[*it].f = 0;
         } else if (strcmp("\\>", mainels[i]) == 0) {
             int fd = open(mainels[i + 1], O_CREAT | O_TRUNC | O_WRONLY, 0660);
             commands[*it].fd_out = fd;
@@ -261,6 +254,9 @@ CMD *get_commands(char **mainels, const int count, int *it) {
             int fd = open(mainels[i + 1], O_CREAT | O_APPEND | O_RDONLY);
             commands[*it].fd_in = fd;
             i++;
+        } else if (strcmp("\\&", mainels[i]) == 0) {
+            commands[*it].f = 1;
+            i++;
         } else {
             commands[*it].argv[argv_counter] = mainels[i];
             commands[*it].argv[argv_counter + 1] = NULL;
@@ -271,73 +267,129 @@ CMD *get_commands(char **mainels, const int count, int *it) {
     return commands;
 }
 
-void conv(int const count, CMD const *cmd, int const it) {
+void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid) {
     if (it - 1 > count) {
         printf("fb!\n");
         fflush(stdout);
         _exit(0);
     }
-    int old_in, old_out;
-    old_out = dup(1);
-    old_in = dup(0);
     int i = 0, fd[2];
-    while(i < it) {
-        pipe(fd);
-        if (!fork()) {
-            if (i + 1 != it) { // не последний элемент
-                if (cmd[i].fd_out == 1) { // стандартный вывод
-                    dup2(fd[1], 1);
-                }
-            }
-            if (cmd[i].fd_out != 1) { // для любого элемента можем перенаправить вывод
-                dup2(cmd[i].fd_out, 1);
-                close(cmd[i].fd_out);
-            }
-            if (cmd[i].fd_in != 0) { // для любого элемента можем перенаправить ввод
-                dup2(cmd[i].fd_in, 0);
-                close(cmd[i].fd_in);
-            }
-            close(fd[0]); close(fd[1]);
-            execvp(cmd[i].argv[0], cmd[i].argv);
-            _exit(1);
+    *pid = fork();
+    if (!(*pid)) { //father
+        if (is_fon) {
+            signal(SIGINT, SIG_IGN);
         }
-        dup2(fd[0], 0);
-        close(fd[1]);
-        i++;
+        while(i < it) {
+            pipe(fd);
+            if (!fork()) {
+                if (i + 1 != it) { // не последний элемент
+                    if (cmd[i].fd_out == 1) { // стандартный вывод
+                        dup2(fd[1], 1);
+                    }
+                }
+                if (cmd[i].fd_out != 1) { // для любого элемента можем перенаправить вывод
+                    dup2(cmd[i].fd_out, 1);
+                    close(cmd[i].fd_out);
+                }
+                if (cmd[i].fd_in != 0) { // для любого элемента можем перенаправить ввод
+                    dup2(cmd[i].fd_in, 0);
+                    close(cmd[i].fd_in);
+                }
+                close(fd[0]); close(fd[1]);
+                execvp(cmd[i].argv[0], cmd[i].argv);
+                _exit(1);
+            }
+            dup2(fd[0], 0);
+            close(fd[1]);
+            i++;
+        }
+        while (wait(NULL) != -1) {} // В ребенке ждем завершения всех внуков
+        _exit(0);
     }
-    while (wait(NULL) != -1) {}
-    dup2(old_in, 0);
-    dup2(old_out, 1);
-    close(old_in);
-    close(old_out);
+    if (!is_fon) { // Это не фоновый процесс
+        while (waitpid(*pid, NULL, 0) > 0) {
+            flag_kill = 0;
+            usleep(1000);
+            if (flag_kill == 1) {
+                flag_kill = 0;
+                printf("\nkill [%d]\n", *pid);
+                fflush(stdout);
+                kill(*pid, SIGKILL);
+            }
+        }
+    }
 }
 
 int main() {
     write(1, "Hello!\n", 7);
-    int count = 0, buf = MAXEL;
+    int pid, status, pid_i = 1, count = 0, buf = MAXEL, flag = 0, buf_pid = 1, count_pid = 0;
+    int *arr_pid = calloc(buf_pid,  sizeof(int));
     const char *exits = "exit\0";
     const char *cdir = "cd\0";
+    signal(SIGINT, handler);
     for (;;) {
+        flag_kill = 0;
+        // Первым делом проверяем завершившиеся процессы
+        if (count_pid > 0) {
+            while (waitpid(-1, &status, WNOHANG) > 0) {
+                if (WIFEXITED(status)) {
+                    printf("[%d] completed, status = %d\n", pid, WEXITSTATUS(status));
+                }
+                for (int i = 0; i < count_pid; ++i) {
+                    if (arr_pid[i] == pid_i) {
+                        arr_pid[i] = 0;
+                    }
+                }
+                int p, q;
+                for (p = 0, q = 0; p < count_pid;) {
+                    if (!arr_pid[p]) { // == 0
+                        p++;
+                    } else { // != 0
+                        arr_pid[q] = arr_pid[p];
+                        p++;
+                        q++;
+                    }
+                }
+                count_pid = q;
+            }
+        }
         char **mainels = malloc(buf * sizeof(char *));
+        flag = 0;
         write(1, ">", 1);
         if (enter_text(mainels, &count, &buf) == 1) { //EOF check
             freearr(mainels, count);
+            signal(SIGTERM, SIG_IGN);
+            kill(0, SIGTERM);
+            free(arr_pid);
             printf("EOF\n");
             exit(0);
         }
         mainels[count] = NULL;
         if (mainels[0] && strncmp(exits, mainels[0], strlen(exits)) == 0) { //exit check
             freearr(mainels, count);
+            signal(SIGTERM, SIG_IGN);
+            kill(0, SIGTERM);
+            free(arr_pid);
             printf("Goodbye\n");
             exit(0);
         }
-        if (mainels[0] && mainels != NULL) { //cdir check!
-            if (strncmp(cdir, mainels[0], strlen(cdir)) == 0){
+        if (mainels[0] && mainels != NULL) {
+            if (strncmp(cdir, mainels[0], strlen(cdir)) == 0) { //cdir check!
                 cdr(mainels, count);
             } else {
                 int it = 0; // struct array counter
                 CMD *commands = get_commands(mainels, count, &it);
-                conv(count, commands, it);
+                check_err_fon(count, commands, it, &flag);
+                if (flag == 2) {
+                    fprintf(stderr, "Error with &");
+                }
+                else {
+                    conv(count, commands, it, flag, &pid);
+                }
+                if (flag) {
+                    printf("[%d] \n", pid);
+                    add_pid(pid, arr_pid, &buf_pid, &count_pid);
+                }
                 freecmd(commands, it);
             }
         }
