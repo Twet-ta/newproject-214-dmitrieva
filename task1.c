@@ -39,29 +39,29 @@ int conv (const char *str, int fd_in, int fd_out)
 }
 
 int main(int argc,char *argv[]){
-    if (argc == 5){
-        int fo = 0, fd[2], status, pid;
-        int old_stdin, old_stdout;
-        old_stdout = dup(1);
-        old_stdin = dup(0);
-        fo = open(argv[4], O_RDONLY);
-        pipe(fd);
-        pid = fork();
-        if(!pid){ //child
-            if (!conv(argv[1], fo, fd[1])) {
-                conv(argv[2], fo, fd[1]);
-            }
-        } 
-        else 
-        {
-            wait(NULL);
+    if (argc != 5) return 0;
+    int fo = open(argv[4], O_RDONLY);
+    int fd[2], status, pid;
+    int old_stdin, old_stdout;
+    old_stdout = dup(1);
+    old_stdin = dup(0);
+    pid = fork();
+    pipe(fd);
+    if(!pid){ //child
+        if (!conv(argv[1], fo, fd[1])) {
+            conv(argv[2], fo, fd[1]);
         }
-        pid = fork();
-        if (!pid) { // pr3
-            conv(argv[3], fd[0], old_stdout);
-        }
+    } 
+    else 
+    {
+        wait(NULL);
     }
-    else fprintf(stderr, "Error");
+    pid = fork();
+    if (!pid) { // pr3
+        conv(argv[3], fd[0], old_stdout);
+    }
+    close(old_stdin);
+    close(old_stdout);
     return 0;
 }
 
