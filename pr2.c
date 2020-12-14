@@ -13,10 +13,10 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
-int flag_dad = 0;
-int flag_chld = 0;
-int flag_chld2 = 0;
-int flag_chld3 = 0;
+int flag_dad = 0; //флаг считывания сигнала от ребенка
+int flag_chld = 0; //флаг отправления символа от родителя
+int flag_chld2 = 0; //флаг окончания ввода названия файла от родителя
+int flag_chld3 = 0; //флаг завершения дочернего процесса
 
 void sig_dad(int sig) {
     flag_dad = 1;
