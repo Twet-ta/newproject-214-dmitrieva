@@ -17,10 +17,19 @@ typedef struct cmd {
 } CMD;
 
 int flag_kill = 0;
+int m = 0;
 
 void handler(int sig) {
     flag_kill = 1;
     signal(SIGINT, handler);
+}
+
+void printmain(char **man, int count) {
+    int i = 0;
+    for (i = 0; i < count; i++) {
+        printf("%s\n", man[i]);
+        fflush(stdout);
+    }
 }
 
 void freearr(char **arr, int count)
@@ -106,21 +115,21 @@ void addword (int len, char *word, char **elems, int *count, int *buf)
 }
 
 void deleteword (char **elems, int *count){
-    free(elems[*count]);
+    free(elems[(*count)-1]);
     (*count)--;
 }
 
-int enter_text (char **mainels, int *count, int *buf, int *flag_and, int *flag_or, int *flag_next)
+int enter_text (char **mainels, int *count, int *buf, int *flag_and, int *flag_or, int *flag_next, int *flag_save, int fd)
 {
     char c = 0, prc = 0, c1;
     int buff = MAXEL, flag, len = 0, fq = 0;
     char *word = malloc(buff * sizeof(char));
     while ((c != '\n') && (*flag_and != 1) && (*flag_or != 1) && (*flag_next != 1)) { // проверка перевода строки
-        flag = read(0, &c, 1);
+        flag = read(fd, &c, 1);
         if (c == '\"') {
             fq = !fq;
         }
-        if ((flag == 0) && (*count == 0)) { //EOF in start
+        if ((flag == 0) && ((*count == 0) && (!(*flag_save)))) { //EOF in start
             free(word);
             return 1;
         }
@@ -211,6 +220,11 @@ int enter_text (char **mainels, int *count, int *buf, int *flag_and, int *flag_o
             }
         }
         prc = c;
+        if (c == '\n' || c == ';') {
+            *flag_save = 0;
+        } else {
+            *flag_save = 1;
+        }
     }
     free(word);
     if (fq == 1) {
@@ -252,11 +266,11 @@ void check_err_fon(int const count, CMD const *cmd, int const it, int *flag, int
     }
 }
 
-CMD *get_commands(char **mainels, const int count, int *it) {
+CMD *get_commands(char **mainels, const int count, int *it, int fdin, int fdout) {
     CMD *commands = calloc(count + 1, sizeof(CMD));
     commands[*it].argv = (char **) calloc(count + 1, sizeof(char *));
-    commands[*it].fd_in = 0;
-    commands[*it].fd_out = 1;
+    commands[*it].fd_in = fdin;
+    commands[*it].fd_out = fdout;
     commands[*it].f = 0;
     int argv_counter = 0;
     for (int i = 0; i < count; ++i) {
@@ -264,8 +278,8 @@ CMD *get_commands(char **mainels, const int count, int *it) {
             (*it)++;
             argv_counter = 0;
             commands[*it].argv = (char **) calloc(count + 1, sizeof(char *));
-            commands[*it].fd_in = 0;
-            commands[*it].fd_out = 1;
+            commands[*it].fd_in = fdin;
+            commands[*it].fd_out = fdout;
             commands[*it].f = 0;
         } else if (strcmp("\\>", mainels[i]) == 0) {
             int fd = open(mainels[i + 1], O_CREAT | O_TRUNC | O_WRONLY, 0660);
@@ -292,12 +306,13 @@ CMD *get_commands(char **mainels, const int count, int *it) {
     return commands;
 }
 
-void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid, int *status) {
+void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid, int *status, int fdin, int fdout) {
     if (it - 1 > count) {
         printf("fb!\n");
         fflush(stdout);
         _exit(0);
     }
+    if (flag_kill == 1) flag_kill = 0;
     int i = 0, fd[2];
     *status = 0;
     if (it == 1) {
@@ -314,6 +329,7 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid, i
             //close(fd[0]); close(fd[1]);
             if (is_fon) {
                 signal(SIGINT, SIG_IGN);
+                close(1);
             }
             execvp(cmd[i].argv[0], cmd[i].argv);
             _exit(1);
@@ -324,13 +340,14 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid, i
         if (!(*pid)) { //father
             if (is_fon) {
                 signal(SIGINT, SIG_IGN);
+                close(fdin);
             }
             while(i < it) {
                 pipe(fd);
                 if (!fork()) {
                     if (i + 1 != it) { // не последний элемент
-                        if (cmd[i].fd_out == 1) { // стандартный вывод
-                            dup2(fd[1], 1);
+                        if (cmd[i].fd_out == fdout) { // стандартный вывод
+                            dup2(fd[1], fdout);
                         }
                     }
                     if (cmd[i].fd_out != 1) { // для любого элемента можем перенаправить вывод
@@ -342,10 +359,13 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid, i
                         close(cmd[i].fd_in);
                     }
                     close(fd[0]); close(fd[1]);
+                    if (is_fon) {
+                        close(1);
+                    }
                     execvp(cmd[i].argv[0], cmd[i].argv);
-                    _exit(0);
+                    _exit(1);
                 }
-                dup2(fd[0], 0);
+                dup2(fd[0], fdin);
                 close(fd[1]);
                 i++;
             }
@@ -366,26 +386,286 @@ void conv(int const count, CMD const *cmd, int const it, int is_fon, int *pid, i
     }
 }
 
-void skip_text(char *c, int *flag_next){
+void save_text(int fd_in, int fd) {
     int flag = 0;
-    flag = read(0, c, 1);
-    while ((flag != 0) && ((*c) != '\n') && ((*c) != ';') && (flag != -1)){
-        flag = read(0, c, 1);
+    char c;
+    flag = read(fd_in, &c, 1);
+    write(fd, &c, 1);
+    while ((flag > 0) && (c != '\n')){
+        flag = read(fd_in, &c, 1);
+        write(fd, &c, 1);
     }
-    if (*c == ';') *flag_next = 1;
 }
 
-int main() {
-    write(1, "Hello!\n", 7);
-    int pid, status, status2, pid_i = 1, count = 0, buf = MAXEL, flag = 0, buf_pid = MAXEL, count_pid = 0;
-    int *arr_pid = calloc(buf_pid,  sizeof(int));
+void skip_text(int *flag_save, int *flag_next, int fd){
+    int flag = 0;
+    char c;
+    flag = read(fd, &c, 1);
+    while ((flag > 0) && (c != '\n') && (c != ';')){
+        flag = read(fd, &c, 1);
+    }
+    if (c == ';') *flag_next = 1;
+    if (c == '\n') {
+        *flag_save = 0;
+        close(fd);
+    }
+}
+
+int start(int fd_in, int fd_out, int fd_arg, int *flag, int *pid, int *stat) {
+    int status, status2, count = 0, buf = MAXEL;
     int flag_cd, flag_and = 0, flag_or = 0, flag_next = 0;
     const char *exits = "exit\0";
     const char *cdir = "cd\0";
     char c;
+    int fd[2];
+    int flag_enter = 0, flag_save = 0;
+    do {
+        flag_and = 0; //флаг наличия &&
+        flag_or = 0; //флаг наличия ||
+        flag_next = 0; //флаг наличия ;
+        flag_cd = 0; //флаг наличия проблем с cd
+        char **mainels = malloc(buf * sizeof(char *));
+        *flag = 0;
+        if (!flag_save) { //перед этим был \n или мы только начали)
+            flag_enter = enter_text(mainels, &count, &buf, &flag_and, &flag_or, &flag_next, &flag_save, fd_in);
+            if (flag_save) {
+                pipe(fd);
+                save_text(fd_in, fd[1]);
+                close(fd[1]);
+            }
+        } else {
+            flag_enter = enter_text(mainels, &count, &buf, &flag_and, &flag_or, &flag_next, &flag_save, fd[0]);
+            if (!flag_save) {
+                close(fd[0]);
+            }
+        }
+        if (flag_enter) { //EOF check
+            freearr(mainels, count);
+            signal(SIGTERM, SIG_IGN);
+            kill(0, SIGTERM);
+            printf("EOF\n");
+            if (flag_save) close(fd[0]);
+            return 1;
+        }
+        mainels[count] = NULL;
+        //printmain(mainels, count);
+        if (mainels[0] && strncmp(exits, mainels[0], strlen(exits)) == 0) { //exit check
+            freearr(mainels, count);
+            signal(SIGTERM, SIG_IGN);
+            kill(0, SIGTERM);
+            printf("Goodbye\n");
+            if (flag_save) close(fd[0]);
+            return 1;
+        }
+        if (mainels[0] && mainels != NULL) {
+            if (strncmp(cdir, mainels[0], strlen(cdir)) == 0) { //cdir check! //change this function!!
+                cdr(mainels, count, &flag_cd);
+                if (flag_cd) {
+                    if (flag_and) {
+                        skip_text(&flag_save, &flag_next, fd[0]);
+                        flag_and = 0;
+                    }
+                }
+                else {
+                    if (flag_or) {
+                        skip_text(&flag_save, &flag_next, fd[0]);
+                        flag_or = 0;
+                    }
+                }
+            } else {
+                int it = 0; // struct array counter
+                CMD *commands = get_commands(mainels, count, &it, fd_arg, fd_out);
+                check_err_fon(count, commands, it, flag, flag_and, flag_or);
+                if (*flag == 2) {
+                    if(flag_save) skip_text(&flag_save, &flag_next, fd[0]);
+                    flag_and = 0;
+                    flag_or = 0;
+                }
+                else {
+                    conv(count, commands, it, *flag, pid, &status2, fd_arg, fd_out);
+                    if (!(*flag)){
+                        if (WIFEXITED(status2) && (!WEXITSTATUS(status2))) {
+                            if (flag_or) {
+                                skip_text(&flag_save, &flag_next, fd[0]);
+                                flag_or = 0;
+                            }
+                            *stat = 1;
+                        }
+                        else {
+                            if (flag_and) {
+                                skip_text(&flag_save, &flag_next, fd[0]);
+                                flag_and = 0;
+                            }
+                            *stat = 0;
+                        }
+                    } else if (flag_or || flag_and) {
+                        *flag = 0; // на всякий случай еще одна проверка на ошибку с фоном
+                    }
+                }
+                /*if (flag == 1) {
+                    printf("[%d] \n", pid);
+                    add_pid(pid, arr_pid, &buf_pid, &count_pid);
+                }*/
+                freecmd(commands, it);
+            }
+        }
+        if ((count == 0) && (flag_and) && (stat)){
+            skip_text(&flag_save, &flag_next, fd[0]);
+            flag_and = 0;
+        }
+        if ((count == 0) && (flag_or) && (!stat)){
+            skip_text(&flag_save, &flag_next, fd[0]);
+            flag_or = 0;
+        }
+        if (mainels != NULL) freearr(mainels, count);
+        count = 0;
+    } while (flag_save);
+    return 0;
+}
+
+int skeep_main(int fd, char *c) {
+    char r = ' ';
+    int count = 1;
+    while ((r != '\n') && (r != ';') && (count || (r != ')'))){
+        read(fd, &r, 1);
+        if (r == '(') count++;
+        if (r == ')') count--;
+    }
+    if (count) return 1;
+    return 0;
+}
+
+int brs(int fdin, int *fdi, int *stat_brs) {
+    int flag;
+    char r, c = '\n';
+    int fd_in[2];
+    int fd_out[2];
+    int fd1, fd0, flag_pipe = 0;
+    int new_fd[2];
+    int flag_fon, pid;
+    int brs_cnt = 0;
+    int fdi_next = 0;
+    int prev_fdin = fdin;
+    int flag_fdin = 0;
+    int flag_pipe2 = 0;
+    int fd_buf, stat = 1;
+    pipe(fd_out);       // буфер вывода
+    fd1 = fd_out[1];
+    fd0 = fd_out[0];
+    while (c != ')') {
+        if (!flag_fdin) fdin = prev_fdin;
+        pipe(fd_in);//буфер ввода
+        do {
+            read(0, &c, 1);
+            if ((flag_pipe) && (c == '|')) {
+                flag_pipe = 0;
+                r = '|';
+                write(fd_in[1], &r, 1);
+            }
+            if (c == '(') {
+                if (flag_pipe) {
+                    write(fd_in[1], "\n", 1);
+                } else {
+                    write(fd_in[1], "\n", 1); ///change!
+                }
+                if (!flag_pipe2) {
+                    flag = start(fd_in[0], fd1, fdin, &flag_fon, &pid, &stat);
+                } else {
+                    while (read(fdin, &r, 1) > 0) write(fd1, &r, 1);
+                }
+                if(flag){
+                    return 1;
+                }
+                pipe(new_fd);
+                fd_buf = fd0;
+                close(fd1);
+                fd0 = new_fd[0];
+                fd1 = new_fd[1];
+                if ((flag_pipe) || (flag_pipe2)) {
+                    //if (flag_pipe2) while (read(fd_buf, &r, 1) > 0) write(1, &r, 1);
+                    flag = brs(fd_buf, &fdi_next, &stat); //куда записывает вывод, откуда читает аргументы для команды
+                    //if (flag_pipe2) while (read(fd1, &r, 1) > 0) write(1, &r, 1);
+                    if (flag) {
+                        return 1;
+                    }
+                    flag_pipe = 0;
+                    flag_pipe2 = 0;
+                    read(0, &c, 1);
+                    while (isspace(c) && (c != '\n')&& (c != ';')) read(0, &c, 1);
+                    if (c == '|') {
+                        fdin = fdi_next;
+                        flag_fdin = 1;
+                        read(0, &c, 1);
+                        flag_pipe2 = 1;
+                    } else {
+                        while(read(fdi_next, &r, 1) > 0) write(fd1, &r, 1);
+                        close(fdi_next);
+                    }
+                } else {
+                    brs_cnt++;
+                    write(fd_in[1], &r, 1);
+                }
+                close(fd_buf);
+            } else {
+                if (flag_pipe){
+                    write(fd_in[1], "|", 1);
+                    flag_pipe = 0;
+                }
+            }
+            if ((c != '|') && (c != ')') && (c != '(')) {
+                write(fd_in[1], &c, 1);
+            } else {
+                if (c == '|') flag_pipe = 1;
+            }
+            if ((c == ')') && (brs_cnt)) {
+                brs_cnt--;
+                write(fd_in[1], &c, 1);
+                c = ' ';
+            }
+        } while ((c != '\n') && (c != ';') && (c != ')'));
+        if (c == '\n') {
+            printf ("Problem with brackets");
+            return 1;
+        }
+        write(fd_in[1], ";", 1);
+        close(fd_in[1]);
+        flag = start(fd_in[0], fd1, fdin, &flag_fon, &pid, &stat);
+        if(flag){
+            return 1;
+        }
+        close(fd_in[0]);
+        if (flag_fdin) flag_fdin = 0;
+    }
+    close(fd1);
+    *fdi = fd0;
+    *stat_brs = stat;
+    return 0;
+}
+
+
+int main() {
+    int flag = 0; //eof
+    char c = '\n';
+    int fd_in[2];//буфер ввода
+    int new_fd[2];//буфер вывода новый на случай встречи скобочек
+    int fd_out[2];//буфер вывода
+    int flag_pipe = 1;
+    int fd1, fd0;//дескрипторы записи и чтения для буфера вывода
+    int buf_pid = MAXEL, count_pid = 0, pid = 0;
+    int *arr_pid = calloc(buf_pid,  sizeof(int));
+    int flag_fon = 0;
+    int status;
+    char r, pr1 = ' ', pr2 = ' ';
+    int brs_cnt = 0, fdi_next, fdin = 0, flag_fdin = 0, flag_pipe2 = 0, flag_and = 0, flag_or = 0;
+    int fd_buf, stat = 1, flag_pipe3, flag_pipe4;
     signal(SIGINT, handler);
-    for (;;) {
-        //проверяем завершившиеся процессы
+    write(1, "Hello!\n", 7);
+    for(;;) {
+        if (!flag_fdin) fdin = 0;
+        if (c == '\n') {
+            write(1, ">", 1);
+        }
+        //буфер ввода как в старте сделать!!!
         if (count_pid > 0) {
             while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
                 if (WIFEXITED(status)) {
@@ -393,11 +673,9 @@ int main() {
                 }
                 else {
                     printf ("[%d] killed\n", pid);
-                    flag_and = 0; //флаг наличия &&
-                    flag_or = 0; //флаг наличия ||
                 }
                 for (int i = 0; i < count_pid; ++i) {
-                    if (arr_pid[i] == pid_i) {
+                    if (arr_pid[i] == pid) {
                         arr_pid[i] = 0;
                     }
                 }
@@ -414,85 +692,136 @@ int main() {
                 count_pid = q;
             }
         }
-        fflush(stdout);
-        if ((!flag_next) && (!flag_or) && (!flag_and)) write(1, ">", 1);
-        fflush(stdout);
-        flag_and = 0; //флаг наличия &&
-        flag_or = 0; //флаг наличия ||
-        flag_next = 0; //флаг наличия ;
-        flag_cd = 0; //флаг наличия проблем с cd
-        char **mainels = malloc(buf * sizeof(char *));
-        flag = 0;
-        if (enter_text(mainels, &count, &buf, &flag_and, &flag_or, &flag_next) == 1) { //EOF check
-            freearr(mainels, count);
-            signal(SIGTERM, SIG_IGN);
-            kill(0, SIGTERM);
-            free(arr_pid);
-            printf("EOF\n");
-            exit(0);
-        }
-        mainels[count] = NULL;
-        if (mainels[0] && strncmp(exits, mainels[0], strlen(exits)) == 0) { //exit check
-            freearr(mainels, count);
-            signal(SIGTERM, SIG_IGN);
-            kill(0, SIGTERM);
-            free(arr_pid);
-            printf("Goodbye\n");
-            exit(0);
-        }
-        if (mainels[0] && mainels != NULL) {
-            if (strncmp(cdir, mainels[0], strlen(cdir)) == 0) { //cdir check!
-                cdr(mainels, count, &flag_cd);
-                if (flag_cd) {
-                    if (flag_and) {
-                        skip_text(&c, &flag_next);
-                        flag_and = 0;
-                    } 
+        flag_pipe = 2;
+        flag_pipe3 = 0;
+        flag_pipe4 = 0;
+        pipe(fd_in);
+        pipe(fd_out);
+        fd1 = fd_out[1];
+        fd0 = fd_out[0];
+        do {
+            read(0, &c, 1);
+            if ((flag_pipe == 3) && (c == '|')) {
+                flag_pipe = 0;
+                r = '|';
+                write(fd_in[1], &r, 1);
+                pr2 = pr1;
+                pr1 = r;
+            } else if ((flag_pipe == 3) && (c != '|')) flag_pipe = 1;
+            if ((flag_pipe2) && (c == '|')) {
+                flag_pipe2 = 0;
+                flag_pipe = 0;
+                //while (read(fdin, &r, 1) > 0) write(fd1, &r, 1);
+                flag_pipe3 = 0;
+                fdin = 0;
+                flag_fdin = 0;
+                r = '|';
+                write(fd_in[1], &r, 1);
+                pr2 = pr1;
+                pr1 = r;
+            } else if (flag_pipe2){
+                flag_pipe2 = 0;
+                flag_pipe3 = 1;
+                if (c == '\n')  flag_pipe4 = 1;
+            }
+            if (c == '(') {
+                write(fd_in[1], "\n", 1);
+                if (!flag_pipe3) {
+                    flag = start(fd_in[0], fd1, fdin, &flag_fon, &pid, &stat);
+                } else{
+                    while (read(fdin, &r, 1) > 0) write(fd1, &r, 1);
                 }
-                else {
-                    if (flag_or) {
-                        skip_text(&c, &flag_next);
-                        flag_or = 0;
-                    } 
+                if (((pr1 == '&') && (pr2 == '&') && stat) || ((pr1 == '|') && (pr2 == '|') && !stat)){
+                    if(skeep_main(0, &c) == 1){
+                        printf("Problem with brackets");
+                        exit(0);
+                    }
+                } else {
+                    if(flag) {
+                        free(arr_pid);
+                        exit(0);
+                    }
+                    pipe(new_fd);
+                    fd_buf = fd0;
+                    close(fd1);
+                    fd0 = new_fd[0];
+                    fd1 = new_fd[1];
+                    //if (flag_pipe2) while (read(fd_buf, &r, 1) > 0) write(1, &r, 1);
+                    flag = brs(fd_buf, &fdi_next, &stat); //откуда читает аргументы для команды, куда записывает вывод
+                    if(flag) {
+                        free(arr_pid);
+                        exit(0);
+                    }
+                    flag_pipe = 0;
+                    flag_pipe2 = 0;
+                    read(0, &c, 1);
+                    while (isspace(c) && (c != '\n')&& (c != ';')) read(0, &c, 1);
+                    if (c == '|') {
+                        fdin = fdi_next;
+                        flag_fdin = 1;
+                        flag_pipe2 = 1;
+                    } else {
+                        while(read(fdi_next, &r, 1) > 0) write(fd1, &r, 1);
+                        close(fdi_next);
+                    }
+                    close(fd_buf);
                 }
+            }
+            if ((c == ')') && (brs_cnt)) {
+                brs_cnt--;
             } else {
-                int it = 0; // struct array counter
-                CMD *commands = get_commands(mainels, count, &it);
-                check_err_fon(count, commands, it, &flag, flag_and, flag_or);
-                if (flag == 2) {
-                    fprintf(stderr, "Error with &\n");
-                    skip_text(&c, &flag_next);
-                    flag_and = 0;
-                    flag_or = 0;
+                if (c == ')') {
+                    printf ("Problem with brackets");
+                    exit (0);
                 }
-                else {
-                    conv(count, commands, it, flag, &pid, &status2);
-                    if (!flag){
-                        if (WIFEXITED(status2) && (!WEXITSTATUS(status2))) {
-                            if (flag_or) {
-                                skip_text(&c, &flag_next);
-                                flag_or = 0;
-                            }   
-                        }
-                        else {
-                            if (flag_and) {
-                                skip_text(&c, &flag_next);
-                            }
-                            flag_or = 0;
-                            flag_and = 0;
-                        }
-                    } else if (flag_or || flag_and) {
-                        flag = 0; // на всякий случай еще одна проверка на ошибку с фоном
+            }
+            if (!isspace(c) && (c != '(') && (c != ')')){
+                pr2 = pr1;
+                pr1 = c;
+            }
+            if ((c != '|') && (c != '(') && (c != ')')) {
+                if (flag_pipe2) flag_pipe2 = 0;
+                if (flag_pipe == 1) {
+                    if (!isspace(c)){
+                        flag_pipe = 0;
+                        r = '|';
+                        write(fd_in[1], &r, 1);
+                        pr2 = pr1;
+                        pr1 = '|';
                     }
                 }
-                if (flag == 1) {
-                    printf("[%d] \n", pid);
-                    add_pid(pid, arr_pid, &buf_pid, &count_pid);
+                write(fd_in[1], &c, 1);
+            } else {
+                if ((c == '|') && (!flag_pipe2)) {
+                    flag_pipe = 3;
                 }
-                freecmd(commands, it);
             }
+            if ((c == ')') && (brs_cnt)) {
+                write(fd_in[1], &c, 1);
+                brs_cnt--;
+                c = ' ';
+            }
+        } while ((c != '\n') && (c != ';'));
+        close(fd_in[1]);
+        //while(read(fdin, &r, 1) > 0) write(1, &r, 1);
+        if (!flag_pipe4) flag = start(fd_in[0], fd1, fdin,  &flag_fon, &pid, &stat);// read, out, arg
+        else while (read(fdin, &r, 1) > 0) write(fd1, &r, 1);
+        if(flag){
+            free(arr_pid);
+            exit(0);
         }
-        if (mainels != NULL) freearr(mainels, count);
-        count = 0;
+        if (flag_fon == 1) {
+            printf("[%d] \n", pid);
+            add_pid(pid, arr_pid, &buf_pid, &count_pid);
+        }
+        close(fd_in[0]);
+        close(fd1);
+        while(read(fd0, &r, 1) > 0) write(1, &r, 1);
+        close(fd0);
+        if (flag_fdin) {
+            flag_fdin = 0;
+            close(fdin);
+        }
+        //close(fd_out[0]);/// новое условие для выхода из функции старт
     }
 }
