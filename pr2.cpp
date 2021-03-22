@@ -50,12 +50,6 @@ public:
         num = 0;
         s = new std::string[size];
     }
-    catalog(const int v){
-        size = v;
-        number++;
-        num = 0;
-        s = new std::string[size];
-    }
     catalog(const catalog& t){
         size = t.size;
         s = new std::string [size];
@@ -72,11 +66,6 @@ public:
             s[i] = t.s[i];
         }
         num = t.num;
-        return *this;
-    }
-    catalog& operator= (const int t)
-    {
-        if (size < t) resize(t);
         return *this;
     }
     virtual ~catalog(){
@@ -140,15 +129,15 @@ public:
     }
     void Delete(){
         num--;
-        numberofbooks++;
+        numberofbooks--;
     }
-    const int catalogs(){
+    int catalogs(){
         return number;
     }
-    const int books(){
+    int books(){
         return num;
     }
-    const int booksincatalog(){
+    int booksincatalog(){
         return numberofbooks;
     }
 };
@@ -158,10 +147,6 @@ class book : public catalog{
     bool IsDustJacket;
 public:
     book() : catalog() {
-        toc = SOFT;
-        IsDustJacket = 0;
-    }
-    book(const int i) : catalog(i){
         toc = SOFT;
         IsDustJacket = 0;
     }
@@ -189,10 +174,6 @@ public:
         IsDustJacket = t.IsDustJacket;
         return *this;
     }
-    book& operator= (const int t) {
-        if (size < t) resize(t);
-        return *this;
-    }
 };
 
 class brochure : public catalog{
@@ -200,10 +181,6 @@ class brochure : public catalog{
     bool HasPics;
 public:
     brochure() : catalog() {
-        br = BW;
-        HasPics = 0;
-    }
-    brochure(const int i) : catalog(i){
         br = BW;
         HasPics = 0;
     }
@@ -231,10 +208,6 @@ public:
         HasPics = t.HasPics;
         return *this;
     }
-    brochure& operator= (const int t) {
-        if (size < t) resize(t);
-        return *this;
-    }
 };
 
 class leaflet : public catalog{
@@ -242,10 +215,6 @@ class leaflet : public catalog{
     Color br;
 public:
     leaflet(): catalog(){
-        br = BW;
-        sides = 0;
-    }
-    leaflet(const int i) : catalog(i){
         br = BW;
         sides = 0;
     }
@@ -273,17 +242,13 @@ public:
         sides = t.sides;
         return *this;
     }
-    leaflet& operator= (const int t) {
-        if (size < t) resize(t);
-        return *this;
-    }
 };
 
 int catalog :: number = 0;
 int catalog :: numberofbooks = 0;
 
 int main() {
-    book b1(2);
+    book b1;
     brochure b2(1,1);
     leaflet b3(0, 1);
     b1.Add("Peace and War");
