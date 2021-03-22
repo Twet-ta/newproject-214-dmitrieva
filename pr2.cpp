@@ -150,9 +150,9 @@ public:
         toc = SOFT;
         IsDustJacket = 0;
     }
-    book(const int i, const int j) : catalog(){
-        toc = static_cast<TypeOfCover>(i%2);
-        IsDustJacket = j;
+    book(const TypeOfCover t, const bool i) : catalog(){
+        toc = t;
+        IsDustJacket = i;
     }
     int CostOfPrint() const{
         return (toc*5 + (!toc)*3 + IsDustJacket*2) * num;
@@ -184,9 +184,9 @@ public:
         br = BW;
         HasPics = 0;
     }
-    brochure(const int i, const int j) : catalog(){
-        br= static_cast<Color>(i%2);
-        HasPics = j;
+    brochure(const Color c, const bool h) : catalog(){
+        br = c;
+        HasPics = h;
     }
     int CostOfPrint() const{
         return num * (br*4 + (!br)*2 + HasPics*10);
@@ -218,9 +218,9 @@ public:
         br = BW;
         sides = 0;
     }
-    leaflet(const int i, const int j) : catalog(){
-        br = static_cast<Color>(i%2);
-        sides = j%2;
+    leaflet(const Color c, const int s) : catalog(){
+        br = c;
+        sides = s;
     }
     int CostOfPrint() const{
         return num * (br*4 + (!br)*2 + sides*3);
@@ -249,8 +249,8 @@ int catalog :: numberofbooks = 0;
 
 int main() {
     book b1;
-    brochure b2(1,1);
-    leaflet b3(0, 1);
+    brochure b2(CL,1);
+    leaflet b3(BW, 1);
     b1.Add("Peace and War");
     b1.Add("Peace");
     b1.Add("War");
