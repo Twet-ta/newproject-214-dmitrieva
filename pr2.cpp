@@ -82,6 +82,7 @@ public:
     virtual ~catalog(){
         delete [] s;
         number--;
+        numberofbooks -=num;
     }
     std::string Name(const int id) const{
         return s[id];
