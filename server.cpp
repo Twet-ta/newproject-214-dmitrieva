@@ -9,8 +9,7 @@ void connection(int cd, const socket_address& clAddr) {
     cs.read_(request);
     vector<string> lines = split_lines(request);
     string path = get_path(lines[0]);
-    cout << "path: " << path << endl;
-    data_connection(cs, path);
+    data_connection(cs, path, request);
 }
 
 void serv_loop() {
@@ -18,12 +17,12 @@ void serv_loop() {
     server_socket_ ss;
     ss.bind_(servaddr);
     ss.listen_(BACKLOG);
-    for (;;){
+    for (;;) {
         socket_address claddr;
         int cd = ss.accept_(claddr);
         connection(cd, claddr);
     }
-} //serv_loop - success
+}
 
 int main()
 {
