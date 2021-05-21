@@ -1,0 +1,25 @@
+"strstrstr"
+"str"
+"strstrstr"
+"strstrstr"
+adfvsdfb
+2315345
+
+
+
+2314354436
+*=
+*
++
+++
++=
+-
+!==
+===
+/=
+/42354
+var a;
+a = 2;
+a = 3;
+
+write(" a = "); write(a);
